@@ -25,6 +25,8 @@ if "embeddings" not in st.session_state:
 if "user_store" not in st.session_state:
     st.session_state.user_store = get_user_store(st.session_state.embeddings)
 
+if "load" not in st.session_state:
+    st.session_state.load = False
 
 def extract_arxiv_id(url):
     if "arxiv.org" in url:
@@ -92,6 +94,7 @@ if st.session_state.source_selection == "Arxiv URL":
                 arxiv_id  = extract_arxiv_id(url)
                 metadata  = build_s2_metadata("url", url=url, arxiv_id=arxiv_id)
                 load_from_user(st.session_state.user_store, full_text, metadata)
+                st.session_state.load = True
             st.success(f"Stored. S2 metadata: {'fetched' if metadata.get('s2_paper_id') else 'not found'}")
         else:
             st.error("Please enter a valid URL.")
@@ -110,6 +113,7 @@ elif st.session_state.source_selection == "PDF Upload":
                     arxiv_id  = extract_arxiv_id(url) if url else ""
                     metadata  = build_s2_metadata("pdf", url=url, arxiv_id=arxiv_id, filename=uploaded_file.name)
                     load_from_user(st.session_state.user_store, full_text, metadata)
+                    st.session_state.load = True
                 st.success("PDF stored.")
             finally:
                 if os.path.exists(temp_path):
@@ -126,6 +130,7 @@ elif st.session_state.source_selection == "Text":
             arxiv_id  = extract_arxiv_id(url) if url else ""
             metadata  = build_s2_metadata("text", url=url, arxiv_id=arxiv_id)
             load_from_user(st.session_state.user_store, full_text, metadata)
+            st.session_state.load = True
             st.success("Text stored.")
         else:
             st.error("Please enter some text.")
@@ -137,12 +142,12 @@ elif st.session_state.source_selection == "Text":
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+    
+# if "prompt" not in st.session_state:
+#     with open("prompt.txt", "r") as f:
+#         st.session_state.prompt = f.read().strip()
 
-if "prompt" not in st.session_state:
-    with open("prompt.txt", "r") as f:
-        st.session_state.prompt = f.read().strip()
-
-if metadata:
+if st.session_state.load:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
