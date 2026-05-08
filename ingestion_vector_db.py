@@ -1,9 +1,11 @@
 import os
+import re
 import csv
 from pathlib import Path
 from dotenv import load_dotenv
 from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 load_dotenv("creds.env")
 
@@ -11,6 +13,23 @@ CSV_FILE        = "data/papers_20250101_20250107.csv"
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "allenai-specter")
 CHROMA_DIR      = "./chroma_db"
 BATCH_SIZE      = 500
+
+CHUNK_SIZE      = 512
+CHUNK_OVERLAP   = 64
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    separators=["\n\n", "\n", ". ", " "],
+)
+
+
+def clean_text(text):
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[^\x00-\x7F]+", " ", text)
+    text = re.sub(r"(https?://\S+)", "", text)
+    text = re.sub(r"\[\d+\]", "", text)
+    return text.strip()
 
 
 def get_arxiv_store(embeddings=None):
@@ -52,7 +71,7 @@ def load_from_csv(store):
             skipped += 1
             continue
 
-        text = f"{row['title'].strip()}. {row['abstract'].strip()}"
+        text = clean_text(f"{row['title'].strip()}. {row['abstract'].strip()}")
         metadata = {
             "arxiv_id":      arxiv_id,
             "title":         row["title"].strip(),
@@ -90,16 +109,29 @@ def load_from_user(store, full_text, metadata):
     doc_id   = arxiv_id or filename or full_text[:60].replace(" ", "_")
 
     existing = set(store.get()["ids"])
-    if doc_id in existing:
+    chunk_ids = [i for i in existing if i.startswith(doc_id)]
+    if chunk_ids:
         print(f"already exists: {doc_id}")
         return
 
-    store.add_texts(
-        texts=[full_text],
-        metadatas=[metadata],
-        ids=[doc_id],
-    )
-    print(f"stored: {doc_id}")
+    full_text = clean_text(full_text)
+    chunks    = splitter.split_text(full_text)
+
+    texts, metas, ids = [], [], []
+    for i, chunk in enumerate(chunks):
+        texts.append(chunk)
+        metas.append({**metadata, "chunk_index": str(i), "total_chunks": str(len(chunks))})
+        ids.append(f"{doc_id}_chunk_{i}")
+
+    for i in range(0, len(texts), BATCH_SIZE):
+        store.add_texts(
+            texts=texts[i : i + BATCH_SIZE],
+            metadatas=metas[i : i + BATCH_SIZE],
+            ids=ids[i : i + BATCH_SIZE],
+        )
+        print(f"stored chunks {i} to {min(i + BATCH_SIZE, len(texts))} of {len(texts)}")
+
+    print(f"done: {len(chunks)} chunks stored for {doc_id}")
 
 
 if __name__ == "__main__":
