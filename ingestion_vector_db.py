@@ -12,10 +12,10 @@ load_dotenv("creds.env")
 CSV_FILE        = "data/papers_20250101_20250107.csv"
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "allenai-specter")
 CHROMA_DIR      = "./chroma_db"
-BATCH_SIZE      = 500
+BATCH_SIZE      = int(os.getenv("BATCH_SIZE", 500))
 
-CHUNK_SIZE      = 512
-CHUNK_OVERLAP   = 64
+CHUNK_SIZE      = int(os.getenv("CHUNK_SIZE", 512))
+CHUNK_OVERLAP   = int(os.getenv("CHUNK_OVERLAP", 64))
 
 splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,
